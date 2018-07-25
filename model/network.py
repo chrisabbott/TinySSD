@@ -5,6 +5,9 @@
 
 import tensorflow as tf
 
+FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_boolean('use_fp16', False, "Train the model using 16-bit floating points")
+
 def _activation_summary(x):
   tf.summary.histogram("%s activations" % x.op.name, x)
   tf.summary.scalar("%s sparsity" % x.op.name, tf.nn.zero_fraction(x))
