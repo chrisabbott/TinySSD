@@ -55,6 +55,53 @@ def _expand(inputs, expand1_depth, expand3_depth):
     e3x3 = conv2d(inputs, expand3_depth, [3, 3], scope='3x3')
   return tf.concat([e1x1, e3x3], 1)
 
+def _tensor_shape(x, rank=3):
+  if x.get_shape().is_fully_defined():
+    return x.get_shape().as_list()
+  else:
+    static_shape = x.get_shape().with_rank(rank).as_list()
+    dynamic_shape = tf.unstack(tf.shape(x), rank)
+    return [s if s is not None else d
+            for s, d in zip(static_shape, dynamic_shape)]
+
+
+def SSD_multibox_layer(inputs, 
+                       num_classes, 
+                       sizes,
+                       ratios=[1],
+                       normalization=-1,
+                       bn_normalization=False):
+  outputs = inputs
+
+  # Location predictions
+  num_anchors = len(sizes) + len(ratios)
+  num_loc_pred = num_anchors * 4
+
+  with tf.variable_scope('loc_pred') as scope:
+    kernel = _variable_with_weight_decay('weights',
+                                         shape=[3,3,INPUTDIMS,num_loc_pred],
+                                         stddev=5e-2,
+                                         wd=None)
+    loc_pred = tf.nn.conv2d(outputs, kernel)
+    # custom_layers.channel_to_last(loc_pred)
+    loc_pred = tf.reshape(loc_pred, _tensor_shape(loc_pred, 4)[:-1]+[num_anchors, 4])
+
+  
+  # Class predictions
+  num_cls_pred = num_anchors * num_classes
+
+  with tf.variable_scope('cls_pred') as scope:
+    kernel = _variable_with_weight_decay('weights',
+                                         shape=[3,3,INPUTDIMS,num_cls_pred],
+                                         stddev=5e-2,
+                                         wd=None)
+    cls_pred = tf.nn.conv2d(outputs, kernel)
+    # custom_layers.channel_to_last(loc_pred)
+    cls_pred = tf.reshape(cls_pred, _tensor_shape(cls_pred, 4)[:-1]+[num_anchors, num_classes])
+
+  return cls_pred, loc_pred
+
+
 def tinySSD(images):
 
   # II. OPTIMIZED FIRE SUB-NETWORK STACK (first stack)
@@ -230,6 +277,8 @@ def tinySSD(images):
 
   # START OUTPUT PARAMETERS
 
+  endPoints = {}
+
   # fire5_mbox_loc
   with tf.variable_scope('fire5_mbox_loc') as scope:
     kernel = _variable_with_weight_decay('weights',
@@ -240,6 +289,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire5_mbox_loc = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire5_mbox_loc"] = fire5_mbox_loc
     _activation_summary(fire5_mbox_loc)
 
   # fire5_mbox_conf  
@@ -252,6 +302,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire5_mbox_conf = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire5_mbox_conf"] = fire5_mbox_conf
     _activation_summary(fire5_mbox_conf)
 
   # fire9_mbox_loc
@@ -264,6 +315,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire9_mbox_loc = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire9_mbox_loc"] = fire9_mbox_loc
     _activation_summary(fire9_mbox_loc)
 
   # fire9_mbox_conf
@@ -276,6 +328,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire9_mbox_conf = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire9_mbox_conf"] = fire9_mbox_conf
     _activation_summary(fire9_mbox_conf)
 
   # fire10_mbox_loc
@@ -288,6 +341,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire10_mbox_loc = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire10_mbox_loc"] = fire10_mbox_loc
     _activation_summary(fire10_mbox_loc)
 
   # fire10_mbox_conf
@@ -300,6 +354,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire10_mbox_conf = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire10_mbox_conf"] = fire10_mbox_conf
     _activation_summary(fire10_mbox_conf)
 
   # fire11_mbox_loc
@@ -312,6 +367,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire11_mbox_loc = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire11_mbox_loc"] = fire11_mbox_loc
     _activation_summary(fire11_mbox_loc)
 
   # fire11_mbox_conf
@@ -324,6 +380,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     fire11_mbox_conf = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["fire11_mbox_conf"] = fire11_mbox_conf
     _activation_summary(fire11_mbox_conf)
 
   # conv12_2_mbox_loc
@@ -336,6 +393,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     conv12_2_mbox_loc = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["conv12_2_mbox_loc"] conv12_2_mbox_loc
     _activation_summary(conv12_2_mbox_loc)
 
   # conv12_2_mbox_conf
@@ -348,6 +406,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     conv12_2_mbox_conf = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["conv12_2_mbox_conf"] = conv12_2_mbox_conf
     _activation_summary(conv12_2_mbox_conf)
 
   # conv13_2_mbox_loc
@@ -360,6 +419,7 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     conv13_2_mbox_loc = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["conv13_2_mbox_loc"] = conv13_2_mbox_loc
     _activation_summary(conv13_2_mbox_loc)
 
   # conv13_2_mbox_conf
@@ -372,5 +432,6 @@ def tinySSD(images):
     biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
     pre_activation = tf.nn.bias_add(conv, biases)
     conv13_2_mbox_conf = tf.nn.relu(pre_activation, name=scope.name)
+    endPoints["conv13_2_mbox_conf"] = conv13_2_mbox_conf
     _activation_summary(conv13_2_mbox_conf)
 
